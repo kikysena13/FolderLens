@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "folderlens"
+version = "1.0.0"
+description = "CLI sederhana untuk membaca struktur folder project"
+requires-python = ">=3.10"
+dependencies = ["rich>=13.7.0"]
+
+[project.scripts]
+folderlens = "folderlens:main"
+
+[tool.setuptools]
+py-modules = ["folderlens", "analyzer", "formatter", "ui"]
