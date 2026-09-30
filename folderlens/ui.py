@@ -81,9 +81,10 @@ def show_help() -> None:
     """Display short usage instructions."""
     console.print(
         Panel(
-            "Pilih [bold]1[/bold] lalu masukkan path folder untuk menganalisis project.\n"
-            "Path kosong berarti folder saat ini.\n\n"
-            "Contoh command langsung: [cyan]folderlens .[/cyan] atau [cyan]folderlens \"B:\\ProjectSaya\"[/cyan]\n"
+            "Pilih [bold]1[/bold] lalu masukkan path project dan pilih subfolder yang ingin dianalisis.\n"
+            "Path kosong berarti folder saat ini; pilihan subfolder kosong berarti semua folder.\n\n"
+            "Contoh: [cyan]folderlens . --include src tests[/cyan]\n"
+            "Atau: [cyan]folderlens \"B:\\ProjectSaya\"[/cyan]\n"
             "Opsi lainnya: [cyan]folderlens --help[/cyan] dan [cyan]folderlens -v[/cyan]",
             title="Bantuan FolderLens",
             border_style="blue",
