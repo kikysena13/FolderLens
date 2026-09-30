@@ -40,6 +40,90 @@ EXTENSION_TECHNOLOGIES = {
 }
 
 
+def _is_ignored_directory(name: str) -> bool:
+    """Return whether a directory should be skipped during analysis."""
+    normalized_name = name.casefold()
+    return normalized_name in IGNORED_DIRS or normalized_name.endswith(".egg-info")
+
+
+def list_project_directories(project_path: Path) -> list[str]:
+    """List selectable project directories as paths relative to the project root."""
+    project_path = project_path.resolve()
+    directories: list[str] = []
+    pending = [project_path]
+
+    while pending:
+        current_path = pending.pop()
+        try:
+            entries = sorted(
+                current_path.iterdir(), key=lambda item: item.name.casefold()
+            )
+        except (PermissionError, OSError):
+            continue
+
+        for entry in entries:
+            try:
+                if entry.is_symlink() or not entry.is_dir():
+                    continue
+            except (PermissionError, OSError):
+                continue
+
+            if _is_ignored_directory(entry.name):
+                continue
+
+            directories.append(entry.relative_to(project_path).as_posix())
+            pending.append(entry)
+
+    return sorted(directories, key=str.casefold)
+
+
+def _validate_include_dirs(project_path: Path, include_dirs: list[str]) -> list[tuple[str, ...]]:
+    """Validate selected relative directories and return their path components."""
+    root = project_path.resolve()
+    selected: list[tuple[str, ...]] = []
+
+    for directory in include_dirs:
+        relative_path = Path(directory)
+        if (
+            not directory.strip()
+            or relative_path.is_absolute()
+            or relative_path.drive
+            or ".." in relative_path.parts
+            or not relative_path.parts
+        ):
+            raise ValueError(f"Path folder harus relatif di dalam project: {directory}")
+
+        candidate = root / relative_path
+        current = root
+        for part in relative_path.parts:
+            current = current / part
+            if current.is_symlink():
+                raise ValueError(f"Folder symlink tidak dapat dipilih: {directory}")
+            if _is_ignored_directory(part):
+                raise ValueError(f"Folder ini dikecualikan dari scan: {directory}")
+
+        try:
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(root)
+        except (OSError, ValueError):
+            raise ValueError(f"Folder tidak ditemukan di dalam project: {directory}") from None
+
+        if not resolved.is_dir():
+            raise ValueError(f"Path yang dipilih bukan folder: {directory}")
+
+        selected.append(resolved.relative_to(root).parts)
+
+    return selected
+
+
+def _is_path_prefix(prefix: tuple[str, ...], path: tuple[str, ...]) -> bool:
+    """Return whether prefix is equal to or an ancestor of path."""
+    return len(prefix) <= len(path) and all(
+        left.casefold() == right.casefold()
+        for left, right in zip(prefix, path)
+    )
+
+
 def _infer_project_type(technologies: list[str], names: set[str]) -> str:
     """Guess a broad project type from the names found in the project."""
     if "pubspec.yaml" in names or "Flutter" in technologies:
@@ -127,8 +211,12 @@ def _explain_structure(
     return "\n".join(sentences)
 
 
-def analyze_project(project_path: Path) -> dict:
+def analyze_project(project_path: Path, include_dirs: list[str] | None = None) -> dict:
     """Build a tree and project summary without reading any file contents."""
+    project_path = project_path.resolve()
+    selected_dirs = (
+        _validate_include_dirs(project_path, include_dirs) if include_dirs else None
+    )
     root = {
         "name": project_path.name or str(project_path),
         "type": "directory",
@@ -144,6 +232,7 @@ def analyze_project(project_path: Path) -> dict:
     pending = [(project_path, root)]
     while pending:
         current_path, current_node = pending.pop()
+        current_relative = current_path.relative_to(project_path).parts
         try:
             entries = list(current_path.iterdir())
         except (PermissionError, OSError):
@@ -159,16 +248,32 @@ def analyze_project(project_path: Path) -> dict:
             except (PermissionError, OSError):
                 continue
 
-            names.add(entry.name)
             if is_directory:
-                directory_names.add(entry.name.casefold())
-                if (
-                    entry.name.casefold() in IGNORED_DIRS
-                    or entry.name.casefold().endswith(".egg-info")
+                if selected_dirs is None:
+                    names.add(entry.name)
+                    directory_names.add(entry.name.casefold())
+                if _is_ignored_directory(entry.name):
+                    continue
+
+                entry_relative = current_relative + (entry.name,)
+                if selected_dirs and not any(
+                    _is_path_prefix(entry_relative, selected)
+                    or _is_path_prefix(selected, entry_relative)
+                    for selected in selected_dirs
                 ):
                     continue
+
+                names.add(entry.name)
+                directory_names.add(entry.name.casefold())
                 directories.append(entry)
             else:
+                if selected_dirs and not any(
+                    _is_path_prefix(selected, current_relative)
+                    for selected in selected_dirs
+                ):
+                    continue
+
+                names.add(entry.name)
                 files.append(entry)
                 extensions[entry.suffix.casefold()] += 1
 
