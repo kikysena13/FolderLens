@@ -5,7 +5,10 @@ FolderLens adalah CLI sederhana untuk melihat struktur folder project dan mendap
 ## Fitur
 
 - Menampilkan tree folder dan file secara recursive.
+- Memungkinkan pengguna memilih subfolder tertentu melalui menu interaktif atau opsi CLI.
 - Menghitung jumlah folder dan file yang dipindai.
+- Mengatur folder tambahan yang dilewati dan membatasi kedalaman scan.
+- Mengekspor laporan ke JSON atau Markdown, baik ke terminal maupun file.
 - Mengenali beberapa bahasa, teknologi, konfigurasi, dokumentasi, dan folder umum.
 - Melewati direktori besar/umum seperti `.git`, `node_modules`, `venv`, `build`, dan `dist`.
 - Melewati symlink agar tidak mengikuti loop atau memindai target di luar folder.
@@ -35,12 +38,41 @@ Alternatifnya, jalankan file langsung dengan `python folderlens.py`.
 python folderlens.py
 python folderlens.py .
 python folderlens.py "B:\\ProjectSaya"
+python folderlens.py . --include src tests
+python folderlens.py . --exclude generated cache --max-depth 3
+python folderlens.py . --format json --output report.json
+python folderlens.py . --format markdown --output report.md
 python folderlens.py --help
 python folderlens.py --version
 python folderlens.py -v
 ```
 
-Tanpa argumen, program membuka menu Rich. Pilih `1` untuk menganalisis folder (path kosong berarti folder saat ini), `2` untuk bantuan, `3` untuk versi, atau `0` untuk keluar. Setelah instalasi editable, perintah berikut juga tersedia:
+Tanpa argumen, program membuka menu Rich. Pilih `1` untuk menganalisis folder (path kosong berarti folder saat ini), lalu pilih nomor subfolder yang ingin dianalisis. Kosongkan pilihan untuk memindai semuanya. Pilih `2` untuk bantuan, `3` untuk versi, atau `0` untuk keluar.
+
+Untuk CLI, `--include` menerima satu atau beberapa path subfolder relatif terhadap folder project. Folder yang tidak dipilih tidak dipindai atau ditampilkan:
+
+```text
+folderlens . --include src tests
+folderlens "B:\\ProjectSaya" --include app\\Http resources\\views
+```
+
+Atur pemindaian dengan `--exclude` (nama folder dicocokkan tanpa membedakan huruf besar/kecil; folder bawaan seperti `.git` dan `node_modules` tetap dilewati) dan `--max-depth` (kedalaman folder maksimum; `0` hanya memindai file di root):
+
+```text
+folderlens . --exclude generated cache
+folderlens . --max-depth 2
+folderlens . --include src tests --exclude snapshots --max-depth 4
+```
+
+`--format` mendukung `text` (default), `json`, dan `markdown`. Gunakan `--output` untuk menyimpan laporan ke file; folder tujuan harus sudah ada. Format JSON cocok untuk pipeline/script, sedangkan Markdown siap dimasukkan ke dokumentasi:
+
+```text
+folderlens . --format json --output report.json
+folderlens . --format markdown --output docs/structure.md
+folderlens . --format json
+```
+
+Setelah instalasi editable, perintah berikut juga tersedia:
 
 ```text
 folderlens
@@ -103,14 +135,6 @@ folderlens/
 └── .gitignore
 ```
 
-## Future Improvements
+## Catatan keamanan dan privasi
 
-- AI-generated explanation
-- Export result to JSON
-- Export result to Markdown
-- File statistics
-- Detect framework
-- Detect programming language
-- Git repository analysis
-- Dependency detection
-- Interactive terminal UI dengan Rich
+FolderLens hanya membaca nama file dan metadata folder; isi file tidak dibuka. Symlink tetap dilewati untuk menghindari loop atau pemindaian target di luar project. Laporan yang diekspor berisi nama dan struktur path, jadi periksa isinya sebelum membagikan laporan project privat.
