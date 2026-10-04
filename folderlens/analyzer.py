@@ -40,10 +40,14 @@ EXTENSION_TECHNOLOGIES = {
 }
 
 
-def _is_ignored_directory(name: str) -> bool:
+def _is_ignored_directory(name: str, excluded_dirs: set[str] | None = None) -> bool:
     """Return whether a directory should be skipped during analysis."""
     normalized_name = name.casefold()
-    return normalized_name in IGNORED_DIRS or normalized_name.endswith(".egg-info")
+    return (
+        normalized_name in IGNORED_DIRS
+        or normalized_name.endswith(".egg-info")
+        or normalized_name in (excluded_dirs or set())
+    )
 
 
 def list_project_directories(project_path: Path) -> list[str]:
@@ -77,7 +81,9 @@ def list_project_directories(project_path: Path) -> list[str]:
     return sorted(directories, key=str.casefold)
 
 
-def _validate_include_dirs(project_path: Path, include_dirs: list[str]) -> list[tuple[str, ...]]:
+def _validate_include_dirs(
+    project_path: Path, include_dirs: list[str], excluded_dirs: set[str]
+) -> list[tuple[str, ...]]:
     """Validate selected relative directories and return their path components."""
     root = project_path.resolve()
     selected: list[tuple[str, ...]] = []
@@ -99,7 +105,7 @@ def _validate_include_dirs(project_path: Path, include_dirs: list[str]) -> list[
             current = current / part
             if current.is_symlink():
                 raise ValueError(f"Folder symlink tidak dapat dipilih: {directory}")
-            if _is_ignored_directory(part):
+            if _is_ignored_directory(part, excluded_dirs):
                 raise ValueError(f"Folder ini dikecualikan dari scan: {directory}")
 
         try:
@@ -211,11 +217,23 @@ def _explain_structure(
     return "\n".join(sentences)
 
 
-def analyze_project(project_path: Path, include_dirs: list[str] | None = None) -> dict:
+def analyze_project(
+    project_path: Path,
+    include_dirs: list[str] | None = None,
+    excluded_dirs: list[str] | None = None,
+    max_depth: int | None = None,
+) -> dict:
     """Build a tree and project summary without reading any file contents."""
     project_path = project_path.resolve()
+    if max_depth is not None and max_depth < 0:
+        raise ValueError("Kedalaman maksimum tidak boleh negatif.")
+    normalized_excluded_dirs = {
+        directory.casefold() for directory in (excluded_dirs or [])
+    }
     selected_dirs = (
-        _validate_include_dirs(project_path, include_dirs) if include_dirs else None
+        _validate_include_dirs(project_path, include_dirs, normalized_excluded_dirs)
+        if include_dirs
+        else None
     )
     root = {
         "name": project_path.name or str(project_path),
@@ -249,10 +267,13 @@ def analyze_project(project_path: Path, include_dirs: list[str] | None = None) -
                 continue
 
             if is_directory:
-                if selected_dirs is None:
+                if (
+                    selected_dirs is None
+                    and entry.name.casefold() not in normalized_excluded_dirs
+                ):
                     names.add(entry.name)
                     directory_names.add(entry.name.casefold())
-                if _is_ignored_directory(entry.name):
+                if _is_ignored_directory(entry.name, normalized_excluded_dirs):
                     continue
 
                 entry_relative = current_relative + (entry.name,)
@@ -265,7 +286,8 @@ def analyze_project(project_path: Path, include_dirs: list[str] | None = None) -
 
                 names.add(entry.name)
                 directory_names.add(entry.name.casefold())
-                directories.append(entry)
+                if max_depth is None or len(current_relative) < max_depth:
+                    directories.append(entry)
             else:
                 if selected_dirs and not any(
                     _is_path_prefix(selected, current_relative)
