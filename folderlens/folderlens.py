@@ -4,10 +4,12 @@
 """Command-line entry point for FolderLens."""
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from analyzer import analyze_project, list_project_directories
+from formatter import format_markdown, format_report
 from ui import console, show_analysis, show_banner, show_help, show_menu
 
 
@@ -32,6 +34,31 @@ def create_parser() -> argparse.ArgumentParser:
         nargs="+",
         metavar="FOLDER",
         help="Analisis hanya folder relatif yang dipilih, contoh: --include src tests.",
+    )
+    parser.add_argument(
+        "--exclude",
+        action="extend",
+        nargs="+",
+        metavar="FOLDER",
+        help="Lewati folder bernama ini (dapat ditentukan beberapa kali).",
+    )
+    parser.add_argument(
+        "--max-depth",
+        type=int,
+        metavar="N",
+        help="Batasi kedalaman folder (0 hanya folder root; default tanpa batas).",
+    )
+    parser.add_argument(
+        "--format",
+        choices=("text", "json", "markdown"),
+        default="text",
+        help="Format laporan: text, json, atau markdown (default: text).",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        metavar="FILE",
+        help="Simpan laporan ke file; tanpa opsi ini laporan dikirim ke stdout.",
     )
     parser.add_argument(
         "--version",
@@ -74,6 +101,10 @@ def analyze_path(
     path: Path,
     include_dirs: list[str] | None = None,
     prompt_for_folders: bool = False,
+    exclude_dirs: list[str] | None = None,
+    max_depth: int | None = None,
+    output_format: str = "text",
+    output_path: Path | None = None,
 ) -> int:
     """Validate and analyze one folder path."""
     try:
@@ -95,12 +126,37 @@ def analyze_path(
         include_dirs = _prompt_for_folders(project_path)
 
     try:
-        analysis = analyze_project(project_path, include_dirs)
+        analysis = analyze_project(
+            project_path,
+            include_dirs,
+            excluded_dirs=exclude_dirs,
+            max_depth=max_depth,
+        )
     except ValueError as error:
         console.print(f"Error: {error}", style="bold red")
         return 1
 
-    show_analysis(analysis)
+    if output_format == "json":
+        report = json.dumps(analysis, indent=2, ensure_ascii=False)
+    elif output_format == "markdown":
+        report = format_markdown(analysis)
+    else:
+        report = format_report(analysis)
+
+    if output_path is not None:
+        try:
+            output_path.write_text(report + "\n", encoding="utf-8")
+        except OSError as error:
+            console.print(
+                f"Error: Tidak dapat menyimpan laporan ke:\n{output_path}\n{error}",
+                style="bold red",
+            )
+            return 1
+        console.print(f"Laporan tersimpan: {output_path}", style="green")
+    elif output_format == "text":
+        show_analysis(analysis)
+    else:
+        sys.stdout.write(report + "\n")
     return 0
 
 
@@ -127,8 +183,22 @@ def main() -> int:
     parser = create_parser()
     args = parser.parse_args()
 
-    if args.path is not None or args.include is not None:
-        return analyze_path(args.path or Path("."), args.include)
+    if (
+        args.path is not None
+        or args.include is not None
+        or args.exclude is not None
+        or args.max_depth is not None
+        or args.output is not None
+        or args.format != "text"
+    ):
+        return analyze_path(
+            args.path or Path("."),
+            args.include,
+            exclude_dirs=args.exclude,
+            max_depth=args.max_depth,
+            output_format=args.format,
+            output_path=args.output,
+        )
     return run_menu()
 
 
