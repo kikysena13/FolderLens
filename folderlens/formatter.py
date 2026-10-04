@@ -1,5 +1,7 @@
 """Format FolderLens analysis results for the terminal."""
 
+import re
+
 
 def _format_tree(node: dict) -> list[str]:
     """Render the nested tree using readable Unicode branches."""
@@ -44,4 +46,39 @@ def format_report(analysis: dict) -> str:
 
     lines.extend(["", "[4] STRUCTURE EXPLANATION", ""])
     lines.append(analysis["explanation"])
+    return "\n".join(lines)
+
+
+def format_markdown(analysis: dict) -> str:
+    """Create a Markdown report with a safely fenced folder tree."""
+    tree_lines = _format_tree(analysis["tree"])
+    # Folder and file names are user-controlled, so choose a fence they cannot close.
+    longest_backticks = max(
+        (len(run) for line in tree_lines for run in re.findall(r"`+", line)),
+        default=0,
+    )
+    fence = "`" * max(3, longest_backticks + 1)
+
+    lines = [
+        "# FolderLens Report",
+        "",
+        "## Project Summary",
+        "",
+        f"- **Type:** {analysis['project_type']}",
+        f"- **Folders:** {analysis['folder_count']}",
+        f"- **Files:** {analysis['file_count']}",
+        f"- **Components:** {', '.join(analysis['components']) or 'Tidak terdeteksi'}",
+        f"- **Technologies:** {', '.join(analysis['technologies']) or 'Tidak terdeteksi'}",
+        "",
+        "## Structure",
+        "",
+        fence,
+        *tree_lines,
+        fence,
+        "",
+        "## Explanation",
+        "",
+        analysis["explanation"],
+        "",
+    ]
     return "\n".join(lines)
