@@ -65,5 +65,30 @@ class AnalyzeProjectSelectionTests(unittest.TestCase):
         self.assertIn("Git", analysis["technologies"])
         self.assertIn("Markdown", analysis["technologies"])
 
+    def test_custom_excluded_directory_is_skipped_case_insensitively(self) -> None:
+        analysis = analyze_project(self.project_path, excluded_dirs=["SRC"])
+
+        self.assertEqual(analysis["file_count"], 2)
+        self.assertEqual(analysis["folder_count"], 1)
+        self.assertEqual(
+            [child["name"] for child in analysis["tree"]["children"]],
+            ["tests", "README.md"],
+        )
+
+        without_tests = analyze_project(self.project_path, excluded_dirs=["tests"])
+        self.assertNotIn("Test directory", without_tests["components"])
+
+    def test_max_depth_limits_directories_but_keeps_root_files(self) -> None:
+        analysis = analyze_project(self.project_path, max_depth=1)
+
+        self.assertEqual(analysis["folder_count"], 2)
+        self.assertEqual(analysis["file_count"], 3)
+        src = next(child for child in analysis["tree"]["children"] if child["name"] == "src")
+        self.assertEqual([child["name"] for child in src["children"]], ["main.py"])
+
+    def test_negative_max_depth_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            analyze_project(self.project_path, max_depth=-1)
+
 if __name__ == "__main__":
     unittest.main()
